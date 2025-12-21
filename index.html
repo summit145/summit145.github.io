@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>How Many Thank Yous Can Jill Bobby Do?</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:linear-gradient(#f2eecb,#fff8e1);overflow:hidden;}
+#game-container{display:flex;flex-direction:column;align-items:center;width:100vw;height:100vh;padding:10px;box-sizing:border-box;}
+h1{font-size:5vw;margin:5px;text-align:center;}
+
+#thankCount{font-size:6vw;font-weight:bold;}
+#comboDisplay{font-size:4vw;color:red;}
+#tpsDisplay{font-size:4vw;color:#555;}
+
+button{border:none;border-radius:12px;padding:8px 12px;font-weight:bold;cursor:pointer;background:#ffdd33;}
+button:hover{background:#ffe066}
+
+#thankYouButton{
+  width:35vw;height:35vw;max-width:200px;max-height:200px;
+  font-size:8vw;border-radius:50%;margin:10px;
+  box-shadow:0 8px #b38f00;animation:glow 2s infinite alternate;
+}
+#thankYouButton:active{transform:translateY(4px);}
+.frenzy{animation:frenzyGlow 0.3s infinite alternate;}
+
+@keyframes glow{from{box-shadow:0 0 20px gold;}to{box-shadow:0 0 30px orange;}}
+@keyframes frenzyGlow{from{box-shadow:0 0 30px red;}to{box-shadow:0 0 40px yellow;}}
+
+#tabs{display:flex;gap:5px;margin:5px;flex-wrap:wrap;}
+.tab{background:#ffdd33;padding:5px 10px;border-radius:10px;cursor:pointer;}
+.tab.active{background:#ffe066;}
+
+.upgrade{
+  width:95%;max-width:600px;background:#eee;border-radius:12px;
+  padding:10px;margin:5px;display:flex;justify-content:space-between;
+}
+.upgrade.disabled{opacity:0.4}
+
+.floatingText{position:absolute;font-weight:bold;animation:floatUp 1s forwards;pointer-events:none;}
+@keyframes floatUp{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(-60px);}}
+
+.achievement-unlock{color:#ff9900;font-weight:bold;}
+.setting{margin:5px;font-size:14px;}
+</style>
+</head>
+
+<body>
+<div id="game-container">
+<h1>How Many Thank Yous Can Jill Bobby Do?</h1>
+
+<div id="thankCount"></div>
+<div id="comboDisplay"></div>
+<div id="tpsDisplay"></div>
+
+<button id="thankYouButton">🙏</button>
+<button id="prestigeButton">Prestige</button>
+<button id="ascendButton">Ascend</button>
+
+<div id="tabs">
+  <div class="tab active" data-page="main">Main</div>
+  <div class="tab" data-page="special">Special</div>
+  <div class="tab" data-page="stats">Stats</div>
+</div>
+
+<div id="settings">
+  <div class="setting"><input type="checkbox" id="sciToggle"> Scientific Notation</div>
+  <div class="setting"><input type="checkbox" id="soundToggle" checked> Sound</div>
+</div>
+
+<div id="upgrades"></div>
+<div id="achievements"></div>
+<div id="stats" style="display:none;"></div>
+</div>
+
+<script>
+/* ---------------- SETTINGS ---------------- */
+let useSci = localStorage.getItem('useSci') === 'true';
+let soundOn = localStorage.getItem('soundOn') !== 'false';
+document.getElementById('sciToggle').checked = useSci;
+document.getElementById('soundToggle').checked = soundOn;
+
+/* ---------------- HELPERS ---------------- */
+function fmt(n){
+ if(useSci && n>=1e6) return n.toExponential(2);
+ return Math.floor(n).toLocaleString();
+}
+function save(k,v){localStorage.setItem(k,v);}
+function load(k,d){return localStorage.getItem(k)?+localStorage.getItem(k):d}
+
+/* ---------------- TIME ---------------- */
+let firstPlay = load('firstPlay',Date.now()); save('firstPlay',firstPlay);
+function daysPlayed(){return (Date.now()-firstPlay)/(1000*60*60*24);}
+
+/* ---------------- STATE ---------------- */
+let thankYous = load('thankYous',0);
+let totalThankYous = load('totalThankYous',0);
+let thankPerSecond = load('thankPerSecond',0);
+let thankPerClick = load('thankPerClick',1);
+let prestigeMultiplier = load('prestigeMultiplier',1);
+let ascensionLevel = load('ascensionLevel',0);
+let totalClicks = load('totalClicks',0);
+
+let combo = 1, lastClick=0, frenzy=false, page='main';
+
+/* ---------------- UPGRADES ---------------- */
+let upgrades = [
+ {n:'Leg Day',c:15,t:1,p:'main'},
+ {n:'Yes! Yes!',c:150,t:10,p:'main'},
+ {n:'Office Team',c:15000,t:1000,p:'special'},
+ {n:'Conference Room',c:5e5,t:25000,p:'special'},
+ {n:'Corporate Division',c:5e7,t:2e6,p:'special'},
+ {n:'Global Operation',c:5e9,t:1e8,p:'special'},
+ {n:'ALLEN',c:1e12,t:5e9,p:'special'}
+];
+upgrades.forEach(u=>u.a=load(u.n,0));
+
+/* ---------------- SYNERGIES ---------------- */
+function synergyBonus(){
+ let bonus=1;
+ if(upgrades[0].a>=10) bonus+=0.1;
+ if(upgrades[2].a>=5 && upgrades[3].a>=5) bonus+=0.25;
+ if(upgrades[6].a>=1) bonus+=0.5;
+ return bonus;
+}
+
+/* ---------------- ACHIEVEMENTS ---------------- */
+let achievements=[
+ {n:'First Thank You',s:false,c:()=>totalThankYous>=1},
+ {n:'Chris',s:false,c:()=>daysPlayed()>=1},
+ {n:'One Million TPS',s:false,c:()=>thankPerSecond>=1e6},
+ {n:'Combo Master',s:true,c:()=>combo>=10},
+ {n:'Weeks Later…',s:true,c:()=>daysPlayed()>=7}
+];
+achievements.forEach(a=>a.a=false);
+
+/* ---------------- UI ---------------- */
+function updateUI(){
+ thankCount.innerText=`Thank Yous: ${fmt(thankYous)}`;
+ comboDisplay.innerText=combo>1?`Combo x${combo}`:'';
+ tpsDisplay.innerText=`TPS: ${fmt(thankPerSecond*prestigeMultiplier*(1+ascensionLevel*0.5))}`;
+
+ upgradesDiv.innerHTML='';
+ upgrades.filter(u=>u.p===page).forEach(u=>{
+  let d=document.createElement('div');
+  d.className='upgrade'+(thankYous<u.c?' disabled':'');
+  d.innerHTML=`<div><b>${u.n}</b><br>${u.a} owned • +${fmt(u.t)} TPS</div><div>Cost<br>${fmt(u.c)}</div>`;
+  if(thankYous>=u.c)d.onclick=()=>{
+   thankYous-=u.c; u.a++; thankPerSecond+=u.t;
+   u.c=Math.floor(u.c*1.25);
+   save(u.n,u.a);
+   updateUI();
+  };
+  upgradesDiv.appendChild(d);
+ });
+
+ achievementsDiv.innerHTML='';
+ achievements.forEach(a=>{
+  if(a.s&&!a.a)return;
+  let d=document.createElement('div');
+  d.className=a.a?'achievement-unlock':'';
+  d.innerText=(a.a?'🏆 ':'🔒 ')+a.n;
+  achievementsDiv.appendChild(d);
+ });
+
+ save('thankYous',thankYous);
+ save('totalThankYous',totalThankYous);
+ save('thankPerSecond',thankPerSecond);
+ save('prestigeMultiplier',prestigeMultiplier);
+ save('ascensionLevel',ascensionLevel);
+}
+
+/* ---------------- GAMEPLAY ---------------- */
+thankYouButton.onclick=()=>{
+ totalClicks++;
+ let now=Date.now();
+ combo=(now-lastClick<2000)?Math.min(combo+1,10):1;
+ lastClick=now;
+
+ let gain=thankPerClick*combo*prestigeMultiplier*synergyBonus();
+ thankYous+=gain; totalThankYous+=gain;
+ updateUI();
+};
+
+prestigeButton.onclick=()=>{
+ if(totalThankYous<1000)return alert('Need 1,000 Thank Yous');
+ prestigeMultiplier+=0.5;
+ thankYous=0; thankPerSecond=0;
+ upgrades.forEach(u=>u.a=0);
+ updateUI();
+};
+
+ascendButton.onclick=()=>{
+ if(totalThankYous<1e9)return alert('Need 1 Billion Thank Yous');
+ ascensionLevel++;
+ prestigeMultiplier=1;
+ thankYous=0; thankPerSecond=0;
+ upgrades.forEach(u=>u.a=0);
+ updateUI();
+};
+
+/* ---------------- TABS ---------------- */
+document.querySelectorAll('.tab').forEach(t=>{
+ t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); page=t.dataset.page; updateUI();
+ };
+});
+
+/* ---------------- SETTINGS ---------------- */
+sciToggle.onchange=()=>{useSci=sciToggle.checked;save('useSci',useSci);updateUI();}
+soundToggle.onchange=()=>{soundOn=soundToggle.checked;save('soundOn',soundOn);}
+
+/* ---------------- LOOP ---------------- */
+setInterval(()=>{
+ let gain=thankPerSecond*(1+ascensionLevel*0.5)/10;
+ thankYous+=gain; totalThankYous+=gain;
+ achievements.forEach(a=>{if(!a.a&&a.c())a.a=true});
+ updateUI();
+},100);
+
+updateUI();
+</script>
+</body>
+</html>
