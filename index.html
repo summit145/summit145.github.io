@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>How Many Thank Yous Can Jill Bobby Do? - Animated Edition</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: linear-gradient(#f7f7ff, #d6d6ff);
+  text-align: center;
+  padding: 20px;
+}
+h1 { color: #4b4bb7; }
+#count { font-size: 36px; margin: 15px; }
+button { padding: 12px 18px; font-size: 16px; margin: 6px; cursor: pointer; }
+.upgrade { background: #fff; border: 2px solid #ccc; border-radius: 8px; margin: 10px auto; width: 320px; padding: 10px; }
+#leaderboard, #achievements, #prestige { background: #fff; width: 300px; margin: 10px auto; padding: 10px; border-radius: 8px; }
+.float { position: absolute; font-size: 18px; color: green; animation: floatUp 1s ease-out forwards; }
+@keyframes floatUp { from {opacity:1; transform:translateY(0);} to {opacity:0; transform:translateY(-40px);} }
+#jill-container { position: relative; margin: 20px auto; width: 200px; height: 200px; }
+#jill { width: 200px; position: absolute; bottom: 0; transition: all 0.2s; cursor: pointer; }
+@media(max-width:500px){ .upgrade, #leaderboard, #achievements, #prestige{width:90%;} #jill{width:150px;} #jill-container{width:150px;height:150px;} }
+</style>
+</head>
+<body>
+
+<h1>How Many Thank Yous Can Jill Bobby Do? - Animated Edition</h1>
+
+<div id="count">Thank Yous: 0</div>
+<div>Per Second: <span id="ps">0</span></div>
+
+<div id="jill-container">
+  <img id="jill" src="https://i.imgur.com/4AiXzf8.png" onclick="tapJill()">
+</div>
+
+<button onclick="triggerEvent()">✨ Surprise Event ✨</button>
+
+<h2>Upgrades</h2>
+<div id="upgrades"></div>
+
+<h2>Achievements</h2>
+<div id="achievements"></div>
+
+<h2>Prestige</h2>
+<div id="prestige">
+  Prestige Points: <span id="prestigePoints">0</span><br>
+  <button onclick="prestige()">Prestige (Reset for 2x Bonus)</button>
+</div>
+
+<h2>Leaderboard</h2>
+<div id="leaderboard"></div>
+
+<button onclick="resetGame()">Reset Run (Save Score)</button>
+
+<audio id="clickSound" src="https://www.soundjay.com/button/beep-07.mp3"></audio>
+<audio id="upgradeSound" src="https://www.soundjay.com/button/button-3.mp3"></audio>
+<audio id="prestigeSound" src="https://www.soundjay.com/button/button-10.mp3"></audio>
+
+<script>
+// ----------------- GAME STATE -----------------
+let game = {
+  thankYous: 0,
+  perSecond: 0,
+  prestigePoints: 0,
+  upgrades: {
+    wave: { name: "Polite Wave", cost: 10, gain: 1, scale: 1.5, quantity:0 },
+    card: { name: "Thank-You Cards", cost: 50, gain: 5, scale: 1.6, quantity:0 },
+    mega: { name: "Mega Gratitude", cost: 250, gain: 25, scale: 1.7, quantity:0 },
+    parade: { name: "Gratitude Parade 🎉", cost: 1000, gain: 100, scale: 1.8, quantity:0 },
+    multiverse: { name: "Thank-You Multiverse 🌌", cost: 10000, gain: 1000, scale: 2, quantity:0 },
+    rocket: { name: "Gratitude Rocket 🚀", cost: 50000, gain: 5000, scale: 2.2, quantity:0 },
+    allen: { name: "Allen (Auto Thanker)", cost: 500, gain: 20, scale: 1.9, quantity:0 }
+  }
+};
+
+let leaderboard = JSON.parse(localStorage.getItem("leaderboard")) || [];
+let achievements = [];
+
+// ----------------- UI -----------------
+function updateUI() {
+  document.getElementById("count").innerText = "Thank Yous: " + Math.floor(game.thankYous);
+  document.getElementById("ps").innerText = game.perSecond;
+  document.getElementById("prestigePoints").innerText = game.prestigePoints;
+
+  let upgradeHTML = "";
+  for(let key in game.upgrades){
+    let u = game.upgrades[key];
+    upgradeHTML += `<div class="upgrade">
+      <b>${u.name}</b> (+${u.gain} / sec)<br>
+      Owned: ${u.quantity}<br>
+      Cost: ${u.cost}<br>
+      <button onclick="buy('${key}')">Buy</button>
+    </div>`;
+  }
+  document.getElementById("upgrades").innerHTML = upgradeHTML;
+
+  updateLeaderboard();
+  updateAchievements();
+}
+
+// ----------------- CLICK / BUY -----------------
+function playSound(id){document.getElementById(id).play();}
+function tapJill(){
+  // Squat animation
+  let jill = document.getElementById("jill");
+  jill.style.transform = "translateY(20px) scale(0.95)";
+  
+  // Float thank you text
+  let el = document.createElement("div");
+  el.className = "float";
+  el.innerText = "Thank You!";
+  el.style.left = (window.innerWidth/2 - 50 + Math.random()*100) + "px";
+  el.style.top = "250px";
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1000);
+  
+  // Return to normal after animation
+  setTimeout(()=>{jill.style.transform="translateY(0) scale(1)";},200);
+  
+  // Add to game thankYous
+  game.thankYous += 1 + game.prestigePoints;
+  updateUI();
+  playSound('clickSound');
+  checkAchievements();
+}
+
+function buy(key){
+  let u = game.upgrades[key];
+  if(game.thankYous >= u.cost){
+    game.thankYous -= u.cost;
+    game.perSecond += u.gain;
+    u.quantity++;
+    u.cost = Math.floor(u.cost * u.scale);
+    playSound('upgradeSound');
+    updateUI();
+  }
+}
+
+// ----------------- FLOATING TEXT -----------------
+function floatText(text){
+  let el = document.createElement("div");
+  el.className = "float";
+  el.innerText = text;
+  el.style.left = (window.innerWidth / 2 + Math.random()*100 - 50) + "px";
+  el.style.top = "300px";
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1000);
+}
+
+// ----------------- AUTO GAIN -----------------
+function autoGain(){
+  game.thankYous += game.perSecond;
+  checkAchievements();
+  updateUI();
+}
+
+// ----------------- SURPRISE EVENT -----------------
+function triggerEvent(){
+  let bonus = Math.floor(Math.random()*100 + 50);
+  game.thankYous += bonus;
+  floatText(`Surprise +${bonus} 🙌`);
+  playSound('clickSound');
+  checkAchievements();
+  updateUI();
+}
+
+// ----------------- SAVE / LOAD -----------------
+function saveGame(){localStorage.setItem("thankYouSave",JSON.stringify(game));}
+function loadGame(){let save=localStorage.getItem("thankYouSave"); if(save) game=JSON.parse(save);}
+
+// ----------------- LEADERBOARD -----------------
+function updateLeaderboard(){
+  let html="<ol>";
+  leaderboard.slice(0,5).forEach(s=>{html+=`<li>${s} Thank Yous</li>`;});
+  html+="</ol>";
+  document.getElementById("leaderboard").innerHTML=html;
+}
+
+// ----------------- ACHIEVEMENTS -----------------
+function checkAchievements(){
+  let y = game.thankYous;
+  if(y>=1000 && !achievements.includes("1k Club")) achievements.push("1k Club ✅");
+  if(y>=10000 && !achievements.includes("10k Club")) achievements.push("10k Club 🎉");
+  if(y>=100000 && !achievements.includes("Mega Gratitude Master")) achievements.push("Mega Gratitude Master 🌟");
+}
+function updateAchievements(){
+  document.getElementById("achievements").innerHTML=achievements.join("<br>") || "No achievements yet...";
+}
+
+// ----------------- PRESTIGE -----------------
+function prestige(){
+  if(game.thankYous>=10000){
+    game.prestigePoints += 2;
+    playSound('prestigeSound');
+    alert("Prestige! +2x Bonus per click!");
+    resetRun(false);
+  } else {alert("Need 10,000 Thank Yous to prestige!");}
+}
+
+// ----------------- RESET -----------------
+function resetRun(saveScore=true){
+  if(saveScore){
+    leaderboard.push(Math.floor(game.thankYous));
+    leaderboard.sort((a,b)=>b-a);
+    localStorage.setItem("leaderboard",JSON.stringify(leaderboard));
+  }
+  localStorage.removeItem("thankYouSave");
+  location.reload();
+}
+function resetGame(){resetRun(true);}
+
+// ----------------- INITIALIZATION -----------------
+loadGame();
+updateUI();
+setInterval(autoGain,1000);
+setInterval(saveGame,5000);
+
+</script>
+
+</body>
+</html>
