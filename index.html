@@ -1,0 +1,189 @@
+<script>
+// ----------------- GAME STATE -----------------
+let game = {
+  thankYous: 0,
+  perSecond: 0,
+  prestigePoints: 0,
+  combo: 0,
+  lastClick: 0,
+  upgrades: {
+    wave: { name: "Polite Wave", cost: 10, gain: 1, scale: 1.5, quantity:0 },
+    card: { name: "Thank-You Cards", cost: 50, gain: 5, scale: 1.6, quantity:0 },
+    mega: { name: "Mega Gratitude", cost: 250, gain: 25, scale: 1.7, quantity:0 },
+    parade: { name: "Gratitude Parade 🎉", cost: 1000, gain: 100, scale: 1.8, quantity:0 },
+    multiverse: { name: "Thank-You Multiverse 🌌", cost: 10000, gain: 1000, scale: 2, quantity:0 },
+    rocket: { name: "Gratitude Rocket 🚀", cost: 50000, gain: 5000, scale: 2.2, quantity:0 },
+    allen: { name: "Allen (Auto Thanker)", cost: 500, gain: 20, scale: 1.9, quantity:0 }
+  }
+};
+
+let leaderboard = JSON.parse(localStorage.getItem("leaderboard")) || [];
+let achievements = [];
+
+// ----------------- SOUNDS -----------------
+function playSound(id){
+  let sound = document.getElementById(id).cloneNode(); // allow overlapping
+  sound.play();
+}
+
+// ----------------- UI -----------------
+function updateUI() {
+  document.getElementById("count").innerText = "Thank Yous: " + Math.floor(game.thankYous);
+  document.getElementById("ps").innerText = game.perSecond;
+  document.getElementById("prestigePoints").innerText = game.prestigePoints;
+
+  let upgradeHTML = "";
+  for(let key in game.upgrades){
+    let u = game.upgrades[key];
+    upgradeHTML += `<div class="upgrade">
+      <b>${u.name}</b> (+${u.gain} / sec)<br>
+      Owned: ${u.quantity}<br>
+      Cost: ${u.cost}<br>
+      <button onclick="buy('${key}')">Buy</button>
+    </div>`;
+  }
+  document.getElementById("upgrades").innerHTML = upgradeHTML;
+
+  updateLeaderboard();
+  updateAchievements();
+}
+
+// ----------------- CLICK / COMBO -----------------
+function tapJill(e){
+  let now = Date.now();
+  if(now - game.lastClick < 1000) game.combo++;
+  else game.combo = 0;
+  game.lastClick = now;
+
+  let bonus = (1 + game.prestigePoints) * (1 + game.combo*0.1);
+  game.thankYous += bonus;
+
+  // Jill animation
+  let jill = document.getElementById("jill");
+  jill.style.transform = `translateY(10px) scale(0.95) rotate(${Math.random()*10-5}deg)`;
+  setTimeout(()=>{jill.style.transform="translateY(0) scale(1) rotate(0deg)";},200);
+
+  // Floating text at click position
+  let el = document.createElement("div");
+  el.className = "float";
+  el.innerText = `+${Math.floor(bonus)}!`;
+  el.style.left = (e.clientX - 25) + "px";
+  el.style.top = (e.clientY - 20) + "px";
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1000);
+
+  // Combo display
+  let comboEl = document.getElementById("combo");
+  if(game.combo > 0){
+    comboEl.innerText = `x${game.combo + 1}`;
+    comboEl.style.opacity = 1;
+    clearTimeout(comboEl.timeout);
+    comboEl.timeout = setTimeout(()=>{comboEl.style.opacity = 0;}, 1000);
+  } else {
+    comboEl.style.opacity = 0;
+  }
+
+  playSound('clickSound');
+  updateUI();
+  checkAchievements();
+}
+
+// ----------------- BUY UPGRADES -----------------
+function buy(key){
+  let u = game.upgrades[key];
+  if(game.thankYous >= u.cost){
+    game.thankYous -= u.cost;
+    game.perSecond += u.gain;
+    u.quantity++;
+    u.cost = Math.floor(u.cost * u.scale);
+    playSound('upgradeSound');
+    updateUI();
+  }
+}
+
+// ----------------- AUTO GAIN -----------------
+function autoGain(){
+  let totalAuto = game.perSecond;
+  game.thankYous += totalAuto;
+  if(totalAuto>0) floatText(`+${totalAuto} 🙌`);
+  checkAchievements();
+  updateUI();
+}
+
+// ----------------- FLOATING TEXT -----------------
+function floatText(text){
+  let el = document.createElement("div");
+  el.className = "float";
+  el.innerText = text;
+  el.style.left = (window.innerWidth/2 + Math.random()*100 - 50) + "px";
+  el.style.top = "300px";
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1000);
+}
+
+// ----------------- SURPRISE EVENT -----------------
+function triggerEvent(){
+  let bonus = Math.floor(Math.random()*100 + 50);
+  game.thankYous += bonus;
+  floatText(`Surprise +${bonus} 🙌`);
+  playSound('clickSound');
+  checkAchievements();
+  updateUI();
+}
+
+// ----------------- SAVE / LOAD -----------------
+function saveGame(){localStorage.setItem("thankYouSave",JSON.stringify(game));}
+function loadGame(){let save=localStorage.getItem("thankYouSave"); if(save) game=JSON.parse(save);}
+
+// ----------------- LEADERBOARD -----------------
+function updateLeaderboard(){
+  let html="<ol>";
+  leaderboard.slice(0,5).forEach(s=>{html+=`<li>${s} Thank Yous</li>`;});
+  html+="</ol>";
+  document.getElementById("leaderboard").innerHTML=html;
+}
+
+// ----------------- ACHIEVEMENTS -----------------
+function checkAchievements(){
+  let y = game.thankYous;
+  if(y>=1000 && !achievements.includes("1k Club")) achievements.push("1k Club ✅");
+  if(y>=10000 && !achievements.includes("10k Club")) achievements.push("10k Club 🎉");
+  if(y>=100000 && !achievements.includes("Mega Gratitude Master")) achievements.push("Mega Gratitude Master 🌟");
+}
+function updateAchievements(){
+  document.getElementById("achievements").innerHTML=achievements.join("<br>") || "No achievements yet...";
+}
+
+// ----------------- PRESTIGE -----------------
+function prestige(){
+  if(game.thankYous>=10000){
+    game.prestigePoints += 2;
+    playSound('prestigeSound');
+    alert("Prestige! +2x Bonus per click!");
+    resetRun(false);
+  } else {alert("Need 10,000 Thank Yous to prestige!");}
+}
+
+// ----------------- RESET -----------------
+function resetRun(saveScore=true){
+  if(saveScore){
+    leaderboard.push(Math.floor(game.thankYous));
+    leaderboard.sort((a,b)=>b-a);
+    localStorage.setItem("leaderboard",JSON.stringify(leaderboard));
+  }
+  localStorage.removeItem("thankYouSave");
+  location.reload();
+}
+function resetGame(){resetRun(true);}
+
+// ----------------- INITIALIZATION -----------------
+loadGame();
+updateUI();
+setInterval(autoGain,1000);
+setInterval(saveGame,5000);
+
+// Attach click event
+document.getElementById("jill").addEventListener("click", tapJill);
+
+             </script>
+             
