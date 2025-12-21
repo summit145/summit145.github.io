@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mobile FPS Game</title>
+<style>
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; font-family:sans-serif;}
+  #renderCanvas { width:100%; height:100%; touch-action:none; display:block; }
+  #hud { position:absolute; top:10px; left:10px; color:white; font-size:16px; }
+  #hud div { margin-bottom:5px; }
+  .btn { position:absolute; bottom:20px; width:60px; height:60px; border-radius:30px; background:rgba(0,0,0,0.5); color:white; font-weight:bold; font-size:14px; text-align:center; line-height:60px; user-select:none; }
+  #pistolBtn { left:20px; } #rifleBtn { left:100px; } #reloadBtn { right:20px; }
+  #reload { color:yellow; display:none; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<canvas id="renderCanvas"></canvas>
+
+<div id="hud">
+  <div>Health: <span id="health">100</span></div>
+  <div>Ammo: <span id="ammo">50</span></div>
+  <div>Score: <span id="score">0</span></div>
+  <div>Weapon: <span id="weapon">PISTOL</span></div>
+  <div id="reload">Reloading...</div>
+</div>
+
+<div id="pistolBtn" class="btn">Pistol</div>
+<div id="rifleBtn" class="btn">Rifle</div>
+<div id="reloadBtn" class="btn">Reload</div>
+
+<!-- Babylon.js CDN -->
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script>
+// ===========================================
+// FULL MOBILE FPS JS CODE (5.0) EMBEDDED
+// ===========================================
+
+// CANVAS AND ENGINE
+const canvas = document.getElementById("renderCanvas");
+const engine = new BABYLON.Engine(canvas,true,{preserveDrawingBuffer:true,stencil:true});
+
+// GLOBAL VARIABLES
+let scene, camera;
+let player = {
+    health: 100,
+    score: 0,
+    weapon: "pistol",
+    ammo: { pistol:50, rifle:100 },
+    maxAmmo: { pistol:50, rifle:100 },
+    fireRate: { pistol:300, rifle:100 },
+    lastShot: 0,
+    reloading: false,
+    reloadTime: 1500
+};
+let bullets=[], enemies=[], powerUps=[];
+let touchState = { moveX:0, moveZ:0, shooting:false };
+
+// UI Elements
+let ui = {
+    health: document.getElementById("health"),
+    ammo: document.getElementById("ammo"),
+    score: document.getElementById("score"),
+    weapon: document.getElementById("weapon"),
+    reload: document.getElementById("reload")
+};
+
+// SOUNDS
+let shootSound = new Audio("https://freesound.org/data/previews/320/320181_5260874-lq.mp3");
+let reloadSound = new Audio("https://freesound.org/data/previews/64/64169_634166-lq.mp3");
+let hitSound = new Audio("https://freesound.org/data/previews/256/256113_4486188-lq.mp3");
+let pickupSound = new Audio("https://freesound.org/data/previews/331/331912_3248244-lq.mp3");
+
+// ===============================
+// CREATE SCENE
+scene = new BABYLON.Scene(engine);
+scene.clearColor = new BABYLON.Color3(0.5,0.8,1);
+const hemiLight = new BABYLON.HemisphericLight("hemiLight",new BABYLON.Vector3(0,1,0),scene);
+hemiLight.intensity=1;
+
+// GROUND & WALLS
+const ground = BABYLON.MeshBuilder.CreateGround("ground",{width:50,height:50},scene);
+ground.material = new BABYLON.StandardMaterial("groundMat",scene);
+ground.material.diffuseColor=new BABYLON.Color3(0.3,0.6,0.3);
+function createWall(x,z,w=10,h=5,d=1){const wall=BABYLON.MeshBuilder.CreateBox("wall",{width:w,height:h,depth:d},scene); wall.position=new BABYLON.Vector3(x,h/2,z); wall.material=new BABYLON.StandardMaterial("wallMat",scene); wall.material.diffuseColor=new BABYLON.Color3(0.6,0.4,0.3);}
+createWall(0,-25,50,5,1); createWall(0,25,50,5,1); createWall(-25,0,1,5,50); createWall(25,0,1,5,50);
+
+// CAMERA
+camera = new BABYLON.UniversalCamera("FPSCamera",new BABYLON.Vector3(0,2,-10),scene);
+camera.attachControl(canvas,true); camera.speed=0.25; camera.inertia=0.7; camera.angularSensibility=500;
+
+// TOUCH CONTROLS
+canvas.addEventListener("touchstart",(e)=>{const t=e.touches[0]; if(t.clientX<window.innerWidth/2) touchState.moveX=t.clientX; else touchState.shooting=true;});
+canvas.addEventListener("touchmove",(e)=>{const t=e.touches[0]; if(t.clientX<window.innerWidth/2){touchState.moveZ=(t.clientY-window.innerHeight/2)/100; touchState.moveX=(t.clientX-window.innerWidth/4)/50;}});
+canvas.addEventListener("touchend",(e)=>{touchState.moveX=0; touchState.moveZ=0; touchState.shooting=false;});
+
+// SHOOT FUNCTION
+function shoot(){if(player.reloading) return; const w=player.weapon; if(player.ammo[w]<=0){reloadWeapon(); return;}
+player.ammo[w]--; updateUI(); shootSound.play();
+const bullet = BABYLON.MeshBuilder.CreateSphere("bullet",{diameter:0.2},scene); bullet.position=camera.position.clone(); bullet.material=new BABYLON.StandardMaterial("bulletMat",scene); bullet.material.diffuseColor=new BABYLON.Color3(1,0,0);
+const forward=camera.getForwardRay().direction.scale(0.5); bullets.push({mesh:bullet,direction:forward});
+const ps = new BABYLON.ParticleSystem("muzzleFlash",20,scene); ps.particleTexture=new BABYLON.Texture("https://i.imgur.com/0ZQOQdY.png",scene); ps.emitter=camera.position.clone(); ps.minSize=0.1; ps.maxSize=0.3; ps.color1=new BABYLON.Color4(1,1,0,1); ps.color2=new BABYLON.Color4(1,0.5,0,1); ps.minLifeTime=0.05; ps.maxLifeTime=0.1; ps.emitRate=50; ps.gravity=new BABYLON.Vector3(0,0,0); ps.start();}
+
+// RELOAD
+function reloadWeapon(){if(player.reloading) return; player.reloading=true; ui.reload.style.display="block"; reloadSound.play();
+setTimeout(()=>{const w=player.weapon; player.ammo[w]=player.maxAmmo[w]; player.reloading=false; ui.reload.style.display="none"; updateUI();},player.reloadTime);}
+
+// SWITCH WEAPON
+function switchWeapon(w){player.weapon=w; updateUI();}
+document.getElementById("pistolBtn").addEventListener("touchstart",()=>{switchWeapon("pistol");});
+document.getElementById("rifleBtn").addEventListener("touchstart",()=>{switchWeapon("rifle");});
+document.getElementById("reloadBtn").addEventListener("touchstart",()=>{reloadWeapon();});
+
+// ENEMIES
+function spawnEnemy(type="normal"){const enemy=BABYLON.MeshBuilder.CreateBox("enemy",{size:1.5},scene); enemy.position=new BABYLON.Vector3(Math.random()*40-20,0.75,Math.random()*40-20); const mat=new BABYLON.StandardMaterial("enemyMat",scene); if(type==="fast"){mat.diffuseColor=new BABYLON.Color3(0,1,0); enemies.push({mesh:enemy,health:5,speed:0.04});} else if(type==="tank"){mat.diffuseColor=new BABYLON.Color3(0.5,0,0.5); enemies.push({mesh:enemy,health:20,speed:0.01});} else{mat.diffuseColor=new BABYLON.Color3(1,0,0); enemies.push({mesh:enemy,health:10,speed:0.02});} enemy.material=mat;}
+for(let i=0;i<10;i++){ const r=Math.random(); if(r<0.6) spawnEnemy("normal"); else if(r<0.85) spawnEnemy("fast"); else spawnEnemy("tank"); }
+
+// POWER-UPS
+function spawnPowerUp(type){const pu=BABYLON.MeshBuilder.CreateBox("pu",{size:1},scene); pu.position=new BABYLON.Vector3(Math.random()*40-20,0.5,Math.random()*40-20); pu.material=new BABYLON.StandardMaterial("puMat",scene); if(type==="health") pu.material.diffuseColor=new BABYLON.Color3(0,1,1); if(type==="ammo") pu.material.diffuseColor=new BABYLON.Color3(1,1,0); powerUps.push({mesh:pu,type:type});}
+spawnPowerUp("health"); spawnPowerUp("ammo");
+
+// GAME LOOP
+scene.onBeforeRenderObservable.add(()=>{
+    const forward=camera.getForwardRay().direction; forward.y=0; const right=new BABYLON.Vector3(-forward.z,0,forward.x); camera.position.addInPlace(forward.scale(-touchState.moveZ*0.2)); camera.position.addInPlace(right.scale(touchState.moveX*0.2));
+    if(touchState.shooting){const now=Date.now(); if(now-player.lastShot>=player.fireRate[player.weapon]){shoot(); player.lastShot=now;}}
+    for(let i=bullets.length-1;i>=0;i--){const b=bullets[i]; b.mesh.position.addInPlace(b.direction); for(let j=enemies.length-1;j>=0;j--){const e=enemies[j]; if(BABYLON.Vector3.Distance(b.mesh.position,e.mesh.position)<1){e.health-=(player.weapon==="pistol"?5:10); hitSound.play();
+if(e.health<=0){e.mesh.dispose(); enemies.splice(j,1); player.score+=10; spawnEnemy(); const ps=BABYLON.ParticleSystem("explosion",30,scene); ps.particleTexture=new BABYLON.Texture("https://i.imgur.com/0ZQOQdY.png",scene); ps.emitter=e.mesh.position.clone(); ps.minSize=0.1; ps.maxSize=0.3; ps.color1=new BABYLON.Color4(1,0.5,0,1); ps.color2=new BABYLON.Color4(1,0,0,1); ps.minLifeTime=0.1; ps.maxLifeTime=0.3; ps.emitRate=50; ps.gravity=new BABYLON.Vector3(0,0,0); ps.start();}}
+b.mesh.dispose(); bullets.splice(i,1); break;}} if(b.mesh.position.length>100){b.mesh.dispose(); bullets.splice(i,1);}}
+    enemies.forEach(e=>{const dir=camera.position.subtract(e.mesh.position); dir.y=0; dir.normalize(); e.mesh.position.addInPlace(dir.scale(e.speed)); if(BABYLON.Vector3.Distance(e.mesh.position,camera.position)<1.5){player.health-=0.5; updateUI(); if(player.health<=0){alert("Game Over! Score:"+player.score); location.reload();}}});
+    for(let i=powerUps.length-1;i>=0;i--){const pu=powerUps[i]; if(BABYLON.Vector3.Distance(pu.mesh.position,camera.position)<2){if(pu.type==="health") player.health=Math.min(100,player.health+30); if(pu.type==="ammo") player.ammo[player.weapon]+=20; pickupSound.play(); pu.mesh.dispose(); powerUps.splice(i,1); updateUI();}}
+});
+
+// UPDATE UI
+function updateUI(){ui.health.innerText=Math.floor(player.health); ui.ammo.innerText=player.ammo[player.weapon]; ui.score.innerText=player.score; ui.weapon.innerText=player.weapon.toUpperCase();}
+
+// ENGINE RUN
+engine.runRenderLoop(()=>{scene.render();});
+window.addEventListener("resize",()=>{engine.resize();});
+scene.shadowsEnabled=false; scene.autoClear=true;
+</script>
+
+</body>
+</html>
