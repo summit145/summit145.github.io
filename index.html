@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ultimate 2D NASA Simulator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { margin:0; overflow:hidden; background:black; }
+#ui { position:absolute; top:10px; left:10px; color:white; font-family:monospace; font-size:16px; z-index:10; }
+.button { position:absolute; width:60px; height:60px; background:rgba(255,255,255,0.2); border-radius:50%; text-align:center; line-height:60px; font-weight:bold; color:white; user-select:none; z-index:10; }
+#thrust { right:20px; bottom:20px; }
+#left { left:20px; bottom:90px; }
+#right { left:100px; bottom:90px; }
+#legs { left:20px; bottom:160px; }
+#collect { left:100px; bottom:160px; }
+#rover { left:20px; bottom:230px; }
+#reset { left:100px; bottom:230px; }
+#orbitUI { position:absolute; right:10px; top:10px; width:250px; background:rgba(0,0,0,0.6); color:white; padding:10px; font-family:monospace; z-index:10; }
+#orbitUI select, #orbitUI button { width:100%; margin-top:5px; }
+</style>
+</head>
+<body>
+
+<div id="ui">Fuel: 100 | Stage: 1 | Altitude: 0 | Velocity: 0 | Planet: Earth | Mission: ---</div>
+<div id="orbitUI">
+<b>Orbital Planner</b><br>
+Target Planet:<br>
+<select id="targetPlanet">
+<option value="Earth">Earth</option>
+<option value="Moon">Moon</option>
+<option value="Mars">Mars</option>
+</select><br>
+<button id="planOrbit">Plan Transfer</button><br>
+<div id="orbitInfo">---</div>
+</div>
+
+<div id="thrust" class="button">↑</div>
+<div id="left" class="button">⟲</div>
+<div id="right" class="button">⟳</div>
+<div id="legs" class="button">L</div>
+<div id="collect" class="button">C</div>
+<div id="rover" class="button">RVR</div>
+<div id="reset" class="button">RESET</div>
+
+<script src="https://pixijs.download/release/pixi.min.js"></script>
+<script>
+
+// === PIXI Setup ===
+const app = new PIXI.Application({ width: window.innerWidth, height: window.innerHeight, antialias:true, backgroundColor:0x000010 });
+document.body.appendChild(app.view);
+window.addEventListener('resize',()=>app.renderer.resize(window.innerWidth, window.innerHeight));
+
+// === Globals ===
+let rocket, planets=[], keys={}, hud = document.getElementById('ui');
+let orbitUI = document.getElementById('orbitInfo');
+let orbitTarget = document.getElementById('targetPlanet');
+let collectibles = [], rover = null;
+
+// === Touch buttons ===
+['thrust','left','right','legs','collect','rover','reset'].forEach(id=>{
+    const btn = document.getElementById(id);
+    btn.addEventListener('touchstart', e => { e.preventDefault(); keys[id]=true; if(id=='reset') resetRocket(); });
+    btn.addEventListener('touchend', e => { e.preventDefault(); keys[id]=false; });
+});
+
+// === Orbital Planner ===
+document.getElementById('planOrbit').addEventListener('click',()=>{
+    let target = planets.find(p=>p.name===orbitTarget.value);
+    if(!target) return;
+    let dx = target.x - rocket.x;
+    let dy = target.y - rocket.y;
+    let dist = Math.sqrt(dx*dx+dy*dy);
+    let speed = Math.sqrt(rocket.vx**2+rocket.vy**2);
+    orbitUI.innerText = `Distance: ${Math.round(dist)} | Δv Approx: ${(dist*0.001).toFixed(2)} | Speed: ${speed.toFixed(2)}`;
+});
+
+// === Load Textures ===
+const loader = PIXI.Loader.shared;
+loader.add('rocket','https://i.imgur.com/6Y8Vv5T.png')
+      .add('flame','https://i.imgur.com/N7QqJPI.png')
+      .add('earth','https://i.imgur.com/QaP9UOX.jpg')
+      .add('mars','https://i.imgur.com/JGqCx3b.jpg')
+      .add('moon','https://i.imgur.com/2I0e0Ie.jpg')
+      .add('clouds','https://i.imgur.com/8F3qGZk.png')
+      .add('river','https://i.imgur.com/dL6JqYn.png')
+      .add('collectible','https://i.imgur.com/3tQeXYT.png')
+      .add('rover','https://i.imgur.com/YW9NxlV.png')
+      .load(setup);
+
+function setup(){
+
+    // === Stars Background ===
+    for(let i=0;i<300;i++){
+        let star = new PIXI.Graphics();
+        star.beginFill(0xFFFFFF,Math.random()*0.8+0.2);
+        star.drawCircle(0,0,Math.random()*2+1);
+        star.endFill();
+        star.x = Math.random()*app.screen.width;
+        star.y = Math.random()*app.screen.height;
+        star.vx = Math.random()*0.1+0.05;
+        star.vy = Math.random()*0.1+0.05;
+        app.stage.addChild(star);
+    }
+
+    // === Planets ===
+    planets.push({name:'Earth', x:app.screen.width*0.4, y:app.screen.height*0.8, radius:80, gravity:0.1, texture:new PIXI.Sprite(loader.resources['earth'].texture), rivers:[], clouds:[], collectibles:[], missions:{collected:0,target:3}});
+    planets.push({name:'Moon', x:app.screen.width*0.6, y:app.screen.height*0.5, radius:50, gravity:0.05, texture:new PIXI.Sprite(loader.resources['moon'].texture), rivers:[], clouds:[], collectibles:[], missions:{collected:0,target:3}});
+    planets.push({name:'Mars', x:app.screen.width*0.8, y:app.screen.height*0.7, radius:60, gravity:0.08, texture:new PIXI.Sprite(loader.resources['mars'].texture), rivers:[], clouds:[], collectibles:[], missions:{collected:0,target:3}});
+
+    planets.forEach(p=>{
+        p.texture.anchor.set(0.5);
+        p.texture.x = p.x; p.texture.y = p.y;
+        p.texture.width = p.radius*2; p.texture.height = p.radius*2;
+        app.stage.addChild(p.texture);
+
+        // Rivers
+        let river = new PIXI.Graphics();
+        river.lineStyle(4,0x00BFFF,1);
+        river.moveTo(p.x-p.radius*0.5,p.y);
+        river.quadraticCurveTo(p.x,p.y+p.radius*0.5,p.x+p.radius*0.4,p.y-p.radius*0.3);
+        app.stage.addChild(river);
+        p.rivers.push(river);
+
+        // Clouds
+        let cloud = new PIXI.Sprite(loader.resources['clouds'].texture);
+        cloud.anchor.set(0.5);
+        cloud.x = p.x; cloud.y = p.y;
+        cloud.width = p.radius*2.2; cloud.height = p.radius*2.2;
+        cloud.alpha = 0.5;
+        app.stage.addChild(cloud);
+        p.clouds.push(cloud);
+
+        // Collectibles
+        for(let i=0;i<3;i++){
+            let c = new PIXI.Sprite(loader.resources['collectible'].texture);
+            c.anchor.set(0.5);
+            c.x = p.x - p.radius + Math.random()*p.radius*2;
+            c.y = p.y - p.radius + Math.random()*p.radius*2;
+            c.collected = false;
+            app.stage.addChild(c);
+            p.collectibles.push(c);
+            collectibles.push(c);
+        }
+    });
+
+    // === Multi-stage Rocket ===
+    rocket = {
+        stages:[
+            {fuel:50, thrust:0.2},
+            {fuel:30, thrust:0.15},
+            {fuel:20, thrust:0.1}
+        ],
+        currentStage:0,
+        vx:0, vy:0, angleRad:-Math.PI/2, x:app.screen.width*0.4, y:app.screen.height*0.1, legsDeployed:false, onSurface:false,
+        sprite:new PIXI.Sprite(loader.resources['rocket'].texture),
+        flame:new PIXI.Sprite(loader.resources['flame'].texture),
+        trajectory:[]
+    };
+    rocket.sprite.anchor.set(0.5,0.5);
+    app.stage.addChild(rocket.sprite);
+    rocket.flame.anchor.set(0.5,0);
+    rocket.flame.visible = false;
+    app.stage.addChild(rocket.flame);
+
+    app.ticker.add(loop);
+}
+
+// === Reset Rocket ===
+function resetRocket(){
+    rocket.currentStage=0;
+    rocket.stages.forEach(s=>{ s.fuel=s.fuel; });
+    rocket.x = app.screen.width*0.4; rocket.y = app.screen.height*0.1;
+    rocket.vx=0; rocket.vy=0; rocket.angleRad=-Math.PI/2;
+    rocket.trajectory=[];
+    rocket.onSurface=false;
+    if(rover) { rover.visible=false; rover=null; }
+}
+
+// === Game Loop ===
+function loop(delta){
+    let stage = rocket.stages[rocket.currentStage];
+
+    // Controls
+    if(keys.left) rocket.angleRad -= 0.05;
+    if(keys.right) rocket.angleRad += 0.05;
+    rocket.flame.visible=false;
+
+    if(keys.thrust && stage.fuel>0){
+        rocket.vx += Math.cos(rocket.angleRad)*stage.thrust;
+        rocket.vy += Math.sin(rocket.angleRad)*stage.thrust;
+        stage.fuel -= 0.2;
+        rocket.flame.visible = true;
+    }
+
+    // Surface movement
+    if(rocket.onSurface){
+        if(keys.left) rocket.x -= 2;
+        if(keys.right) rocket.x += 2;
+    }
+
+    // Rover deployment
+    if(keys.rover && rocket.onSurface && !rover){
+        rover = new PIXI.Sprite(loader.resources['rover'].texture);
+        rover.anchor.set(0.5);
+        rover.x = rocket.x; rover.y = rocket.y;
+        rover.vx=0; rover.vy=0;
+        app.stage.addChild(rover);
+    }
+
+    if(rover){
+        // Rover simple AI: move right and left randomly
+        rover.vx += (Math.random()-0.5)*0.1;
+        rover.vy += (Math.random()-0.5)*0.05;
+        rover.x += rover.vx; rover.y += rover.vy;
+    }
+
+    // Collectibles
+    if(keys.collect){
+        collectibles.forEach(c=>{
+            if(!c.collected){
+                let dx = rocket.x - c.x;
+                let dy = rocket.y - c.y;
+                let dist = Math.sqrt(dx*dx+dy*dy);
+                if(dist<20){
+                    c.collected = true;
+                    c.visible=false;
+                    stage.fuel += 10;
+                    // Update planet mission
+                    planets.forEach(p=>{
+                        if(p.collectibles.includes(c)) p.missions.collected++;
+                    });
+                }
+            }
+        });
+    }
+
+    // Auto stage separation
+    if(stage.fuel <= 0 && rocket.currentStage < rocket.stages.length-1){
+        rocket.currentStage++;
+        stage = rocket.stages[rocket.currentStage];
+    }
+
+    // Gravity
+    rocket.onSurface=false;
+    planets.forEach(p=>{
+        let dx = p.x - rocket.x, dy = p.y - rocket.y;
+        let dist = Math.sqrt(dx*dx+dy*dy);
+        rocket.vx += p.gravity*dx/dist;
+        rocket.vy += p.gravity*dy/dist;
+
+        // Landing
+        if(dist < p.radius + 10 && rocket.legsDeployed && Math.abs(rocket.vx)<1 && Math.abs(rocket.vy)<2){
+            rocket.vx=0; rocket.vy=0;
+            rocket.onSurface=true;
+        }
+
+        // Clouds drift
+        p.clouds.forEach(cloud=>{
+            cloud.x += 0.2*delta;
+            if(cloud.x - p.radius>app.screen.width) cloud.x = p.x - p.radius*1.2;
+        });
+    });
+
+    // Movement
+    rocket.x += rocket.vx;
+    rocket.y += rocket.vy;
+
+    // Update rocket sprite
+    rocket.sprite.x = rocket.x; rocket.sprite.y = rocket.y; rocket.sprite.rotation = rocket.angleRad;
+    rocket.flame.x = rocket.x - Math.cos(rocket.angleRad)*15;
+    rocket.flame.y = rocket.y - Math.sin(rocket.angleRad)*15;
+    rocket.flame.rotation = rocket.angleRad + Math.PI;
+
+    // Trajectory
+    rocket.trajectory.push({x:rocket.x, y:rocket.y});
+    if(rocket.trajectory.length>500) rocket.trajectory.shift();
+    app.stage.children.filter(c=>c.name==='traj').forEach(c=>app.stage.removeChild(c));
+    let trajGraphics = new PIXI.Graphics(); trajGraphics.name='traj';
+    trajGraphics.lineStyle(2,0xFFFF00,1);
+    if(rocket.trajectory.length>1){
+        trajGraphics.moveTo(rocket.trajectory[0].x,rocket.trajectory[0].y);
+        for(let i=1;i<rocket.trajectory.length;i++){
+            trajGraphics.lineTo(rocket.trajectory[i].x,rocket.trajectory[i].y);
+        }
+    }
+    app.stage.addChild(trajGraphics);
+
+    // Orbit arcs
+    app.stage.children.filter(c=>c.name==='orbitArc').forEach(c=>app.stage.removeChild(c));
+    let target = planets.find(p=>p.name===orbitTarget.value);
+    if(target){
+        let arc = new PIXI.Graphics(); arc.name='orbitArc';
+        arc.lineStyle(2,0x00FF00,0.7);
+        arc.moveTo(rocket.x,rocket.y);
+        arc.lineTo(target.x,target.y);
+        app.stage.addChild(arc);
+    }
+
+    // Camera & Zoom
+    let zoom=1;
+    planets.forEach(p=>{
+        let dx=p.x-rocket.x, dy=p.y-rocket.y;
+        let dist=Math.sqrt(dx*dx+dy*dy);
+        if(rocket.onSurface) zoom=3;
+        else if(dist<p.radius*2) zoom=2;
+    });
+    app.stage.pivot.x = rocket.x - app.screen.width/(2*zoom);
+    app.stage.pivot.y = rocket.y - app.screen.height/(2*zoom);
+    app.stage.scale.set(zoom);
+
+    // HUD
+    let currentPlanet = planets.reduce((closest,p)=>{
+        let dist = Math.sqrt((p.x-rocket.x)**2+(p.y-rocket.y)**2);
+        if(!closest.dist || dist<closest.dist) return {name:p.name,dist:dist}; else return closest;
+    },{}).name;
+    let vel = Math.sqrt(rocket.vx**2+rocket.vy**2).toFixed(2);
+    let missionText = planets.find(p=>p.name===currentPlanet)?.missions;
+    hud.innerText = `Fuel: ${Math.max(0,stage.fuel.toFixed(0))} | Stage: ${rocket.currentStage+1} | Altitude: ${Math.round(rocket.y)} | Velocity: ${vel} | Planet: ${currentPlanet} | Mission: ${missionText?.collected || 0}/${missionText?.target || 0}`;
+}
+
+</script>
+</body>
+</html>
