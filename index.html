@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ThankYou Clicker</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f4ead5;
+    text-align: center;
+}
+button {
+    padding: 10px;
+    margin: 5px;
+}
+#thankyou {
+    width: 220px;
+    height: 220px;
+    font-size: 22px;
+    border-radius: 50%;
+    background: #ffcc66;
+}
+.panel {
+    display: inline-block;
+    vertical-align: top;
+    width: 280px;
+    margin: 10px;
+}
+.golden {
+    background: gold;
+    font-weight: bold;
+}
+</style>
+</head>
+<body>
+
+<h1>ThankYou Clicker</h1>
+<h2><span id="count">0</span> ThankYous</h2>
+<p><span id="tps">0</span> per second</p>
+<p>Prestige Level: <span id="prestige">0</span></p>
+
+<button id="thankyou">THANK YOU</button>
+
+<div>
+<div class="panel">
+<h3>Buildings</h3>
+<div id="buildings"></div>
+</div>
+
+<div class="panel">
+<h3>Upgrades</h3>
+<button onclick="buyUpgrade(0)">Double Clicks (100)</button><br>
+<button onclick="buyUpgrade(1)">Writer Boost (500)</button>
+</div>
+
+<div class="panel">
+<h3>Achievements</h3>
+<ul id="achievements"></ul>
+</div>
+</div>
+
+<button onclick="prestigeReset()">Prestige Reset</button>
+
+<script>
+let thankYous = 0;
+let perClick = 1;
+let prestige = 0;
+let playTime = 0;
+let lastSave = Date.now();
+
+const buildings = [
+ {name:"Writer", count:0, base:10, cps:1},
+ {name:"Printer", count:0, base:100, cps:5},
+ {name:"Factory", count:0, base:1000, cps:25},
+ {name:"Office", count:0, base:10000, cps:250},
+ {name:"Allen", count:0, base:1000000, cps:100000}
+];
+
+const upgrades = [
+ {bought:false, cost:100, effect:()=>perClick*=2},
+ {bought:false, cost:500, effect:()=>buildings[0].cps*=2}
+];
+
+const achievements = [
+ {name:"First Thanks", cond:()=>thankYous>=1},
+ {name:"1,000 Thanks", cond:()=>thankYous>=1000},
+ {name:"Millionaire", cond:()=>thankYous>=1_000_000},
+ {name:"Cris", cond:()=>playTime>=3600}
+];
+
+document.getElementById("thankyou").onclick=()=>{
+ thankYous+=perClick*(1+prestige*0.1);
+ update();
+};
+
+function cps(){
+ return buildings.reduce((a,b)=>a+b.count*b.cps,0)*(1+prestige*0.1);
+}
+
+function buildingCost(b){
+ return Math.floor(b.base*Math.pow(1.15,b.count));
+}
+
+function buyBuilding(i){
+ let b=buildings[i];
+ let cost=buildingCost(b);
+ if(thankYous>=cost){
+  thankYous-=cost;
+  b.count++;
+ }
+ update();
+}
+
+function buyUpgrade(i){
+ let u=upgrades[i];
+ if(!u.bought && thankYous>=u.cost){
+  thankYous-=u.cost;
+  u.bought=true;
+  u.effect();
+ }
+ update();
+}
+
+function prestigeReset(){
+ if(thankYous>=1_000_000){
+  prestige++;
+  thankYous=0;
+  perClick=1;
+  buildings.forEach(b=>b.count=0);
+ }
+ update();
+}
+
+function update(){
+ document.getElementById("count").textContent=Math.floor(thankYous);
+ document.getElementById("tps").textContent=Math.floor(cps());
+ document.getElementById("prestige").textContent=prestige;
+
+ let bDiv=document.getElementById("buildings");
+ bDiv.innerHTML="";
+ buildings.forEach((b,i)=>{
+  let btn=document.createElement("button");
+  btn.textContent=`${b.name} (${b.count}) - ${buildingCost(b)}`;
+  btn.onclick=()=>buyBuilding(i);
+  bDiv.appendChild(btn);
+  bDiv.appendChild(document.createElement("br"));
+ });
+
+ let aList=document.getElementById("achievements");
+ aList.innerHTML="";
+ achievements.forEach(a=>{
+  if(a.cond()){
+   let li=document.createElement("li");
+   li.textContent=a.name;
+   aList.appendChild(li);
+  }
+ });
+
+ save();
+}
+
+setInterval(()=>{
+ thankYous+=cps()/10;
+ playTime++;
+ update();
+},100);
+
+setInterval(()=>{
+ if(Math.random()<0.05){
+  let g=document.createElement("button");
+  g.textContent="GOLDEN THANK YOU!";
+  g.className="golden";
+  g.onclick=()=>{
+   thankYous+=cps()*10;
+   g.remove();
+  };
+  document.body.appendChild(g);
+  setTimeout(()=>g.remove(),5000);
+ }
+},30000);
+
+function save(){
+ localStorage.setItem("tySave",JSON.stringify({
+  thankYous,perClick,prestige,playTime,buildings,upgrades,lastSave:Date.now()
+ }));
+}
+
+function load(){
+ let s=localStorage.getItem("tySave");
+ if(!s) return;
+ let d=JSON.parse(s);
+ thankYous=d.thankYous;
+ perClick=d.perClick;
+ prestige=d.prestige;
+ playTime=d.playTime;
+ d.buildings.forEach((b,i)=>Object.assign(buildings[i],b));
+ d.upgrades.forEach((u,i)=>{
+  upgrades[i].bought=u.bought;
+  if(u.bought) upgrades[i].effect();
+ });
+ let diff=(Date.now()-d.lastSave)/1000;
+ thankYous+=cps()*diff;
+}
+load();
+update();
+</script>
+
+</body>
+</html>
