@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ThankYou Clicker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root{
+  --bg:#0b0b0b;
+  --panel:#120000;
+  --text:#ff3333;
+  --accent:#ff1a1a;
+  --button:#1a1a1a;
+}
+body{
+  font-family: Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  margin:0;
+  padding:0;
+}
+header{
+  position:sticky;
+  top:0;
+  background:#1a0000;
+  padding:10px;
+  display:flex;
+  justify-content:center;
+  gap:20px;
+  border-bottom:2px solid var(--accent);
+  z-index:100;
+}
+header div{
+  text-align:center;
+}
+#main{
+  display:flex;
+  justify-content:center;
+  gap:20px;
+  padding:20px;
+  flex-wrap:wrap;
+}
+.panel{
+  background: var(--panel);
+  padding:10px;
+  border-radius:8px;
+  border:1px solid #660000;
+  width:200px;
+  max-height:70vh;
+  overflow-y:auto;
+}
+#clickArea{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+#thankyou{
+  width:220px;
+  height:220px;
+  border-radius:50%;
+  font-size:24px;
+  background: #b30000;
+  color:white;
+  border:3px solid var(--accent);
+  animation:pulse 2s infinite, glow 3s infinite alternate;
+  margin-bottom:10px;
+  position:relative;
+}
+button{
+  padding:10px;
+  margin:5px 0;
+  background: var(--button);
+  color: var(--text);
+  border:1px solid var(--accent);
+  border-radius:6px;
+  cursor:pointer;
+}
+button:hover:not(:disabled){
+  box-shadow:0 0 10px var(--accent);
+  transform:scale(1.05);
+}
+button:disabled{opacity:.5;}
+.floating{
+  position:absolute;
+  font-size:20px;
+  font-weight:bold;
+  color:yellow;
+  pointer-events:none;
+  transition: transform 1s ease-out, opacity 1s ease-out;
+}
+@keyframes pulse{50%{transform:scale(1.05)}}
+@keyframes glow{from{box-shadow:0 0 10px red}to{box-shadow:0 0 25px crimson}}
+#themeToggle{position:fixed;top:10px;right:10px;padding:8px;}
+@media(max-width:800px){
+  #main{flex-direction:column; align-items:center;}
+  .panel{width:90%; max-height:none;}
+  #thankyou{width:180px;height:180px;font-size:20px;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>Total: <span id="count">0</span></div>
+  <div>CPS: <span id="tps">0</span></div>
+  <div>Per Click: <span id="perClickDisplay">1</span></div>
+  <div>Prestige: <span id="prestige">0</span> (+<span id="pbonus">0</span>%)</div>
+</header>
+
+<div id="main">
+  <div id="clickArea">
+    <button id="thankyou">THANK YOU</button>
+    <button id="prestigeButton" onclick="prestigeReset()">Prestige Reset (1,000,000)</button>
+  </div>
+
+  <div class="panel" id="buildingsPanel">
+    <h3>Buildings</h3>
+    <div id="buildings"></div>
+  </div>
+
+  <div class="panel" id="upgradesPanel">
+    <h3>Upgrades</h3>
+    <div id="upgrades"></div>
+  </div>
+</div>
+
+<div class="panel" style="margin:10px auto; max-width:600px;">
+  <h3>Achievements</h3>
+  <ul id="achievements"></ul>
+</div>
+
+<button id="themeToggle">Toggle Theme</button>
+
+<script>
+// ===========================
+// GAME STATE
+// ===========================
+let thankYous=0, perClick=1, prestige=0, playTime=0, lastUpdate=Date.now();
+let goldenActive=false;
+
+// Buildings
+const buildings=[
+  {name:"Leg Day",count:0,base:10,cps:1},
+  {name:"Team Yes Yes",count:0,base:100,cps:5},
+  {name:"School",count:0,base:1000,cps:25},
+  {name:"Granny",count:0,base:10000,cps:250},
+  {name:"Allen",count:0,base:1000000,cps:100000}
+];
+
+// Upgrades
+const upgrades=[
+  {name:"Double Clicks",cost:100,bought:false,effect:()=>{perClick*=2;}},
+  {name:"Leg Day Boost",cost:500,bought:false,effect:()=>{buildings[0].cps*=2;}}
+];
+
+// Achievements
+const achievements=[
+  {name:"First Thanks",cond:()=>thankYous>=1},
+  {name:"1,000 Thanks",cond:()=>thankYous>=1000},
+  {name:"Millionaire",cond:()=>thankYous>=1000000},
+  {name:"Chris",cond:()=>playTime>=3600}
+];
+
+function hasChris(){return playTime>=3600;}
+const prestigeBonus = () => { let bonus = 1 + prestige*0.05; if(hasChris()) bonus += prestige*0.025; return bonus; };
+const cps = () => buildings.reduce((a,b)=>a+b.count*b.cps,0) * prestigeBonus();
+const buildingCost = b => Math.floor(b.base * Math.pow(1.15, b.count));
+
+// DOM
+const count = document.getElementById("count");
+const tps = document.getElementById("tps");
+const perClickDisplay = document.getElementById("perClickDisplay");
+const prestigeEl = document.getElementById("prestige");
+const pbonus = document.getElementById("pbonus");
+const buildingsDiv = document.getElementById("buildings");
+const upgradesDiv = document.getElementById("upgrades");
+const achievementsList = document.getElementById("achievements");
+const thankyou = document.getElementById("thankyou");
+const themeToggle = document.getElementById("themeToggle");
+const prestigeButton = document.getElementById("prestigeButton");
+
+// ===========================
+// Number formatting
+// ===========================
+function formatNumber(n){
+  if(n>=1e9) return (n/1e9).toFixed(2)+'B';
+  if(n>=1e6) return (n/1e6).toFixed(2)+'M';
+  if(n>=1e3) return (n/1e3).toFixed(1)+'K';
+  return Math.floor(n);
+}
+
+// ===========================
+// Floating numbers with pooling
+// ===========================
+const floatingPool = [];
+function showFloating(num,event){
+  let f;
+  if(floatingPool.length > 0){
+    f = floatingPool.pop();
+    f.style.display = "block";
+  } else {
+    f = document.createElement("div");
+    f.className="floating";
+    thankyou.appendChild(f);
+  }
+  f.textContent = "+" + formatNumber(num);
+  let x = event ? event.offsetX - 20 : 0;
+  let y = event ? event.offsetY - 30 : 0;
+  f.style.transform = `translate(${x}px,${y}px)`;
+  f.style.opacity = 1;
+  f.style.setProperty('--dx', (Math.random()*50-25)+"px");
+  setTimeout(()=>{
+    f.style.transform = `translate(${x + parseFloat(f.style.getPropertyValue('--dx'))}px, ${y-50}px)`;
+    f.style.opacity = 0;
+    setTimeout(()=>{
+      f.style.display = "none";
+      floatingPool.push(f);
+    },1000);
+  },16);
+}
+
+// ===========================
+// Tooltip
+// ===========================
+function updateTooltip(){
+  let gain = perClick * prestigeBonus();
+  thankyou.title = `+${formatNumber(gain)} per click\n${formatNumber(cps())} per second`;
+}
+
+// ===========================
+// Click button
+// ===========================
+thankyou.onclick = (e) => {
+  let gain = perClick * prestigeBonus();
+  thankYous += gain;
+  showFloating(gain,e);
+  updateDisplay();
+  updateTooltip();
+};
+
+// ===========================
+// Buy buildings/upgrades
+// ===========================
+function buyBuilding(i){
+  let b = buildings[i], c = buildingCost(b);
+  if(thankYous >= c){ thankYous -= c; b.count++; updateBuildings(); }
+  updateDisplay();
+  updateTooltip();
+}
+
+function buyUpgrade(i){
+  let u = upgrades[i];
+  if(!u.bought && thankYous >= u.cost){
+    thankYous -= u.cost; u.bought = true; u.effect();
+    updateUpgrades();
+  }
+  updateDisplay();
+  updateTooltip();
+}
+
+// ===========================
+// Prestige
+// ===========================
+function prestigeReset(){
+  if(thankYous < 1000000) return;
+  if(!confirm("Are you sure you want to prestige? This will reset all progress!")) return;
+  prestige++; thankYous=0; perClick=1;
+  buildings.forEach(b=>b.count=0);
+  upgrades.forEach(u=>u.bought=false);
+  buildings[0].cps = 1;
+  updateAll();
+}
+
+// ===========================
+// Update displays
+// ===========================
+function updateBuildings(){
+  buildings.forEach((b,i)=>{
+    let btn = document.getElementById("building"+i);
+    if(!btn){
+      btn = document.createElement("button");
+      btn.id = "building"+i;
+      btn.onclick = ()=>buyBuilding(i);
+      buildingsDiv.appendChild(btn);
+    }
+    btn.textContent=`${b.name} (${b.count}) - ${formatNumber(buildingCost(b))} | +${formatNumber(b.cps)} cps`;
+  });
+}
+
+function updateUpgrades(){
+  upgrades.forEach((u,i)=>{
+    let btn = document.getElementById("upgrade"+i);
+    if(!btn){
+      btn = document.createElement("button");
+      btn.id = "upgrade"+i;
+      btn.onclick = ()=>buyUpgrade(i);
+      upgradesDiv.appendChild(btn);
+    }
+    btn.textContent=`${u.name} (${formatNumber(u.cost)})`;
+    btn.disabled = u.bought;
+  });
+}
+
+function updateAchievements(){
+  achievements.forEach((a,i)=>{
+    let li = document.getElementById("ach"+i);
+    if(a.cond()){
+      if(!li){
+        li = document.createElement("li");
+        li.id = "ach"+i;
+        li.textContent = a.name;
+        achievementsList.appendChild(li);
+      }
+    }
+  });
+}
+
+function updatePrestigeButton(){
+  prestigeButton.disabled = thankYous < 1000000;
+}
+
+function updateDisplay(){
+  count.textContent = formatNumber(thankYous);
+  tps.textContent = formatNumber(cps());
+  perClickDisplay.textContent = formatNumber(perClick * prestigeBonus());
+  prestigeEl.textContent = prestige;
+  pbonus.textContent = Math.round((prestige*0.05 + (hasChris()?prestige*0.025:0))*100);
+  updatePrestigeButton();
+}
+
+// ===========================
+// Game loop
+// ===========================
+function gameLoop(){
+  const now = Date.now();
+  const delta = (now - lastUpdate)/1000;
+  lastUpdate = now;
+
+  thankYous += cps() * delta;
+  playTime += delta;
+
+  updateDisplay();
+  requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
+
+// ===========================
+// Golden button
+// ===========================
+setInterval(()=>{
+  if(Math.random()<0.05 && !goldenActive){
+    goldenActive=true;
+    let g=document.createElement("button");
+    g.textContent="GOLDEN THANK YOU!";
+    g.className="golden";
+    g.onclick=()=>{
+      thankYous += cps()*10;
+      goldenActive=false;
+      g.remove();
+      updateDisplay();
+      updateTooltip();
+    }
+    document.getElementById("clickArea").appendChild(g);
+    setTimeout(()=>{ if(goldenActive){ goldenActive=false; g.remove(); }},5000);
+  }
+},30000);
+
+// ===========================
+// Save/load
+// ===========================
+function save(){
+  localStorage.setItem("tySave",JSON.stringify({
+    thankYous, perClick, prestige, playTime,
+    buildings: buildings.map(b=>({count:b.count, cps:b.cps})),
+    upgrades: upgrades.map(u=>({bought:u.bought})),
+    lastUpdate
+  }));
+}
+function load(){
+  const s = localStorage.getItem("tySave");
+  if(!s) return;
+  const d = JSON.parse(s);
+  thankYous = d.thankYous; perClick=d.perClick; prestige=d.prestige; playTime=d.playTime;
+  lastUpdate = d.lastUpdate || Date.now();
+  d.buildings.forEach((b,i)=>{ buildings[i].count=b.count; buildings[i].cps=b.cps; });
+  d.upgrades.forEach((u,i)=>{ upgrades[i].bought=u.bought; });
+  updateAll();
+}
+function updateAll(){
+  updateBuildings();
+  updateUpgrades();
+  updateAchievements();
+  updateDisplay();
+  updateTooltip();
+}
+
+// Save every 30 seconds
+setInterval(save,30000);
+window.addEventListener("beforeunload", save);
+load();
+updateAll();
+
+// ===========================
+// Theme toggle
+// ===========================
+themeToggle.onclick = ()=>document.body.classList.toggle("light");
+</script>
+</body>
+  </html>
+  
