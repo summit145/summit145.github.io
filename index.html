@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ThankYou Clicker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root{
+  --bg:#0b0b0b;
+  --panel:#120000;
+  --text:#ff3333;
+  --accent:#ff1a1a;
+  --button:#1a1a1a;
+}
+.light{
+  --bg:#f4ead5;
+  --panel:#fff6df;
+  --text:#222;
+  --accent:#cc0000;
+  --button:#ffffff;
+}
+body{
+  font-family:Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  text-align:center;
+  margin:0;
+  padding:10px;
+  transition:0.5s;
+}
+h1,h2,h3{
+  color:var(--accent);
+  text-shadow:0 0 8px var(--accent);
+}
+button{
+  padding:12px;
+  margin:6px;
+  background:var(--button);
+  color:var(--text);
+  border:1px solid var(--accent);
+  cursor:pointer;
+  border-radius:6px;
+}
+button:hover:not(:disabled){
+  box-shadow:0 0 10px var(--accent);
+  transform:scale(1.05);
+}
+button:disabled{opacity:.5}
+#thankyou{
+  width:220px;
+  height:220px;
+  border-radius:50%;
+  font-size:22px;
+  background:#b30000;
+  color:white;
+  border:3px solid var(--accent);
+  animation:pulse 2s infinite, glow 3s infinite alternate;
+}
+.panel{
+  display:inline-block;
+  width:300px;
+  margin:8px;
+  padding:8px;
+  background:var(--panel);
+  border-radius:8px;
+  border:1px solid #660000;
+  box-shadow:0 0 15px #330000;
+}
+.golden{
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  background:linear-gradient(45deg,gold,red);
+  color:black;
+  font-weight:bold;
+  border:2px solid gold;
+  animation:glow 1s infinite alternate;
+  z-index:1000;
+}
+ul{list-style:none;padding:0;margin:0}
+@keyframes pulse{50%{transform:scale(1.05)}}
+@keyframes glow{from{box-shadow:0 0 10px red}to{box-shadow:0 0 25px crimson}}
+#themeToggle{position:fixed;top:10px;right:10px;padding:8px;}
+@media(max-width:600px){
+  .panel{width:90%;display:block;margin:10px auto;}
+  #thankyou{width:180px;height:180px;font-size:18px;}
+}
+</style>
+</head>
+<body>
+
+<button id="themeToggle">Toggle Theme</button>
+
+<h1>ThankYou Clicker</h1>
+<h2><span id="count">0</span> ThankYous</h2>
+<p>
+  <span id="tps">0</span> per second<br>
+  Prestige: <span id="prestige">0</span> (+<span id="pbonus">0</span>%)
+</p>
+
+<button id="thankyou">THANK YOU</button>
+
+<div>
+  <div class="panel">
+    <h3>Buildings</h3>
+    <div id="buildings"></div>
+  </div>
+  <div class="panel">
+    <h3>Upgrades</h3>
+    <div id="upgrades"></div>
+  </div>
+  <div class="panel">
+    <h3>Achievements</h3>
+    <ul id="achievements"></ul>
+  </div>
+</div>
+
+<button onclick="prestigeReset()">Prestige Reset (1,000,000)</button>
+
+<script>
+let thankYous=0, perClick=1, prestige=0, playTime=0, goldenActive=false;
+let lastSave=Date.now();
+
+const buildings=[
+ {name:"Leg day",count:0,base:10,cps:1},
+ {name:"Yes Yes",count:0,base:100,cps:5},
+ {name:"Granny",count:0,base:1000,cps:25},
+ {name:"School",count:0,base:10000,cps:250},
+ {name:"Allen",count:0,base:1000000,cps:100000}
+];
+
+const upgrades=[
+ {name:"Double Clicks",cost:100,bought:false,effect:()=>perClick*=2},
+ {name:"Leg Day Boost",cost:500,bought:false,effect:()=>buildings[0].cps*=2}
+];
+
+const achievements=[
+ {name:"First Thanks",cond:()=>thankYous>=1},
+ {name:"1,000 Thanks",cond:()=>thankYous>=1000},
+ {name:"Millionaire",cond:()=>thankYous>=1000000},
+ {name:"Chris",cond:()=>playTime>=3600}
+];
+
+function hasChris(){return playTime>=3600;}
+const prestigeBonus = () => {
+  let bonus = 1 + prestige*0.1;
+  if(hasChris()) bonus += prestige*0.05; // secret Chris bonus
+  return bonus;
+};
+const cps=()=>buildings.reduce((a,b)=>a+b.count*b.cps,0)*prestigeBonus();
+const buildingCost=b=>Math.floor(b.base*Math.pow(1.15,b.count));
+
+const count = document.getElementById("count");
+const tps = document.getElementById("tps");
+const prestigeEl = document.getElementById("prestige");
+const pbonus = document.getElementById("pbonus");
+const buildingsDiv = document.getElementById("buildings");
+const upgradesDiv = document.getElementById("upgrades");
+const achievementsList = document.getElementById("achievements");
+const thankyou = document.getElementById("thankyou");
+
+thankyou.onclick=()=>{updateProgress();thankYous+=perClick*prestigeBonus();updateDisplay();};
+
+function buyBuilding(i){
+ let b=buildings[i],c=buildingCost(b);
+ if(thankYous>=c){thankYous-=c;b.count++; updateBuildings();}
+ updateDisplay();
+}
+
+function buyUpgrade(i){
+ let u=upgrades[i];
+ if(!u.bought&&thankYous>=u.cost){
+  thankYous-=u.cost; u.bought=true; u.effect();
+  updateUpgrades();
+ }
+ updateDisplay();
+}
+
+function prestigeReset(){
+ if(thankYous<1000000) return;
+ prestige++; thankYous=0; perClick=1;
+ buildings.forEach(b=>b.count=0);
+ upgrades.forEach(u=>u.bought=false);
+ buildings[0].cps=1;
+ updateAll();
+}
+
+// =======================
+// Display Updates
+// =======================
+function updateBuildings(){
+ buildingsDiv.innerHTML="";
+ buildings.forEach((b,i)=>{
+  let btn=document.createElement("button");
+  btn.textContent=`${b.name} (${b.count}) - ${buildingCost(b)} | +${b.cps} cps`;
+  btn.onclick=()=>buyBuilding(i);
+  buildingsDiv.appendChild(btn);
+  buildingsDiv.appendChild(document.createElement("br"));
+ });
+}
+function updateUpgrades(){
+ upgradesDiv.innerHTML="";
+ upgrades.forEach((u,i)=>{
+  let btn=document.createElement("button");
+  btn.textContent=`${u.name} (${u.cost})`;
+  btn.disabled=u.bought;
+  btn.onclick=()=>buyUpgrade(i);
+  upgradesDiv.appendChild(btn);
+  upgradesDiv.appendChild(document.createElement("br"));
+ });
+}
+function updateAchievements(){
+ achievementsList.innerHTML="";
+ achievements.forEach(a=>{
+  if(a.cond()){
+   let li=document.createElement("li");
+   li.textContent=a.name;
+   achievementsList.appendChild(li);
+  }
+ });
+}
+function updateDisplay(){
+ count.textContent=Math.floor(thankYous);
+ tps.textContent=Math.floor(cps());
+ prestigeEl.textContent=prestige;
+ pbonus.textContent=Math.round((prestige*0.1 + (hasChris()?prestige*0.05:0))*100);
+}
+
+// =======================
+// Game Loop (time-based for offline)
+// =======================
+function updateProgress(){
+ let now = Date.now();
+ let elapsed = (now-lastSave)/1000;
+ lastSave = now;
+ thankYous += cps()*elapsed;
+ playTime += elapsed;
+}
+function updateAll(){
+ updateBuildings();
+ updateUpgrades();
+ updateAchievements();
+ updateDisplay();
+ save();
+}
+
+setInterval(()=>{
+ updateProgress();
+ updateDisplay();
+ save();
+},1000); // display every 1s
+
+// =======================
+// Golden Button
+// =======================
+setInterval(()=>{
+ if(Math.random()<0.05 && !goldenActive){
+  goldenActive=true;
+  let g=document.createElement("button");
+  g.textContent="GOLDEN THANK YOU!";
+  g.className="golden";
+  g.onclick=()=>{updateProgress();thankYous+=cps()*10; goldenActive=false; g.remove(); updateDisplay();}
+  document.body.appendChild(g);
+  setTimeout(()=>{if(goldenActive){goldenActive=false;g.remove();}},5000);
+ }
+},30000);
+
+// =======================
+// Save/Load
+// =======================
+function save(){
+ localStorage.setItem("tySave",JSON.stringify({
+  thankYous,perClick,prestige,playTime,buildings,upgrades,lastSave
+ }));
+}
+function load(){
+ let s = localStorage.getItem("tySave");
+ if(!s) return;
+ let d = JSON.parse(s);
+ thankYous=d.thankYous; perClick=d.perClick; prestige=d.prestige; playTime=d.playTime; lastSave=d.lastSave;
+ d.buildings.forEach((b,i)=>Object.assign(buildings[i],b));
+ d.upgrades.forEach((u,i)=>{upgrades[i].bought=u.bought;if(u.bought)upgrades[i].effect();});
+ updateAll();
+}
+
+themeToggle.onclick=()=>document.body.classList.toggle("light");
+
+load();
+updateAll();
+</script>
+
+</body>
+  </html>
+  
