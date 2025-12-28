@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Professional Beard & Mustache Trimmer</title>
+
+<style>
+body {
+  margin: 0;
+  background: #ded9d2;
+  font-family: system-ui, -apple-system, sans-serif;
+  text-align: center;
+}
+
+h1 {
+  margin: 10px 0;
+  font-weight: 600;
+}
+
+canvas {
+  background: radial-gradient(circle at center, #f5c9a8, #e2b08e);
+  border-radius: 16px;
+  box-shadow: 0 12px 45px rgba(0,0,0,.35);
+  touch-action: none;
+  cursor: none;
+}
+
+.ui {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px;
+}
+
+button {
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #222;
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.active { background: #555; }
+button.goal { background: #005f73; }
+
+#goalText {
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: #333;
+}
+</style>
+</head>
+
+<body>
+<h1>Professional Beard & Mustache Trimmer</h1>
+<div id="goalText"></div>
+
+<canvas id="c" width="860" height="520"></canvas>
+
+<div class="ui">
+  <button id="scissors" class="active">✂ Scissors</button>
+  <button id="razor">🪒 Razor</button>
+  <button id="mustache" class="active">Mustache</button>
+  <button id="beard">Beard</button>
+  <button id="save">Save Style</button>
+  <button id="toggle">Before / After</button>
+  <button id="reset">Reset</button>
+</div>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+let tool = "scissors";
+let mode = "mustache";
+let showBefore = false;
+let savedStyle = null;
+
+const mouse = { x: 0, y: 0, down: false };
+const hairs = [];
+
+const CX = canvas.width / 2;
+const MUSTACHE_Y = 255;
+const BEARD_Y = 310;
+
+const MAX_LEN = 34;
+const MIN_LEN = 3;
+
+// ---- CLIENT GOAL ----
+let targetLength = randomRange(10, 16);
+updateGoal();
+
+// ---- AUDIO ----
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function snip() {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.frequency.value = 800;
+  g.gain.value = 0.015;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.04);
+}
+
+// ---- INPUT ----
+function setPos(e) {
+  const r = canvas.getBoundingClientRect();
+  mouse.x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+  mouse.y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+}
+
+canvas.onmousemove = setPos;
+canvas.onmousedown = () => mouse.down = true;
+canvas.onmouseup = () => mouse.down = false;
+canvas.ontouchstart = e => { mouse.down = true; setPos(e); };
+canvas.ontouchmove = setPos;
+canvas.ontouchend = () => mouse.down = false;
+
+// ---- UI ----
+scissors.onclick = () => selectTool("scissors");
+razor.onclick = () => selectTool("razor");
+mustache.onclick = () => selectMode("mustache");
+beard.onclick = () => selectMode("beard");
+reset.onclick = resetHair;
+
+save.onclick = () => {
+  savedStyle = hairs.map(h => h.length);
+};
+
+toggle.onclick = () => showBefore = !showBefore;
+
+function selectTool(t) {
+  tool = t;
+  scissors.classList.toggle("active", t==="scissors");
+  razor.classList.toggle("active", t==="razor");
+}
+
+function selectMode(m) {
+  mode = m;
+  mustache.classList.toggle("active", m==="mustache");
+  beard.classList.toggle("active", m==="beard");
+  targetLength = randomRange(10,16);
+  updateGoal();
+  resetHair();
+}
+
+// ---- HAIR ----
+class Hair {
+  constructor(x,y,a,l) {
+    this.x=x; this.y=y;
+    this.baseAngle=a; this.angle=a;
+    this.length=l;
+    this.shadow=l;
+    this.w=Math.random()*1.2+.5;
+  }
+
+  update() {
+    const dx = mouse.x-this.x;
+    const dy = mouse.y-this.y;
+    const d = Math.hypot(dx,dy);
+
+    if(d<70) this.angle += (Math.atan2(dy,dx)-this.angle)*0.08;
+    else this.angle += (this.baseAngle-this.angle)*0.05;
+
+    if(mouse.down && d < (tool==="razor"?22:14) && this.length>MIN_LEN) {
+      this.length -= tool==="razor"?2.6:1.3;
+      snip();
+    }
+  }
+
+  draw() {
+    ctx.strokeStyle = "rgba(0,0,0,.25)";
+    ctx.lineWidth = this.w+1;
+    ctx.beginPath();
+    ctx.moveTo(this.x,this.y);
+    ctx.lineTo(
+      this.x+Math.cos(this.angle)*this.length,
+      this.y+Math.sin(this.angle)*this.length
+    );
+    ctx.stroke();
+
+    ctx.strokeStyle = "#2b1a12";
+    ctx.lineWidth = this.w;
+    ctx.stroke();
+  }
+}
+
+// ---- CREATE HAIR ----
+function resetHair() {
+  hairs.length=0;
+  const count = mode==="mustache"?520:900;
+  const baseY = mode==="mustache"?MUSTACHE_Y:BEARD_Y;
+
+  for(let i=0;i<count;i++){
+    const spread = mode==="mustache"?260:340;
+    const x = CX+(Math.random()-.5)*spread;
+    const y = baseY+Math.random()*(mode==="beard"?140:12);
+    const a = mode==="mustache"
+      ? Math.PI+(x-CX)*.002
+      : Math.PI/2+(Math.random()-.5)*.25;
+    hairs.push(new Hair(x,y,a,randomRange(10,MAX_LEN)));
+  }
+  savedStyle = hairs.map(h=>h.length);
+}
+
+// ---- FACE ----
+function drawFace() {
+  ctx.fillStyle = "rgba(0,0,0,.2)";
+  ctx.beginPath();
+  ctx.ellipse(CX,MUSTACHE_Y+38,190,24,0,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle = "#c48a6a";
+  ctx.beginPath();
+  ctx.arc(CX,MUSTACHE_Y-22,16,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle="#b9745c";
+  ctx.beginPath();
+  ctx.ellipse(CX,MUSTACHE_Y+8,40,10,0,0,Math.PI);
+  ctx.fill();
+
+  ctx.fillStyle="#b07a5e";
+  ctx.beginPath();
+  ctx.ellipse(CX,BEARD_Y+165,90,22,0,0,Math.PI);
+  ctx.fill();
+}
+
+// ---- TOOL ----
+function drawTool() {
+  ctx.strokeStyle="#111"; ctx.lineWidth=3;
+  if(tool==="scissors"){
+    ctx.beginPath();
+    ctx.arc(mouse.x-6,mouse.y,6,0,Math.PI*2);
+    ctx.arc(mouse.x+6,mouse.y,6,0,Math.PI*2);
+    ctx.moveTo(mouse.x-6,mouse.y);
+    ctx.lineTo(mouse.x+6,mouse.y);
+    ctx.stroke();
+  } else {
+    ctx.strokeRect(mouse.x-15,mouse.y-6,30,12);
+  }
+}
+
+// ---- GOAL ----
+function updateGoal(){
+  document.getElementById("goalText").innerText =
+    `Client request: average length ≈ ${targetLength}px`;
+}
+
+// ---- LOOP ----
+function loop(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawFace();
+
+  hairs.forEach((h,i)=>{
+    if(showBefore && savedStyle) h.length=savedStyle[i];
+    h.update(); h.draw();
+  });
+
+  drawTool();
+  requestAnimationFrame(loop);
+}
+
+function randomRange(a,b){ return Math.random()*(b-a)+a; }
+
+// START
+resetHair();
+loop();
+</script>
+</body>
+  </html>
+  
