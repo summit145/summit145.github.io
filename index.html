@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Thank You Clicker</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: black;
+    color: red;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.game {
+    background: #0a0a0a;
+    border: 3px solid red;
+    border-radius: 15px;
+    padding: 20px;
+    width: 380px;
+    box-shadow: 0 0 25px red;
+    text-align: center;
+}
+
+button {
+    width: 100%;
+    margin: 6px 0;
+    padding: 12px;
+    background: red;
+    color: black;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    background: darkred;
+}
+
+.section {
+    border-top: 1px solid red;
+    margin-top: 10px;
+    padding-top: 10px;
+}
+
+.small {
+    font-size: 13px;
+    color: #ff8888;
+}
+
+.hidden {
+    display: none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="game">
+<h1>Thank You Clicker</h1>
+
+<div>Thank Yous: <span id="count">0</span></div>
+<div class="small">
++<span id="perClick">1</span>/click |
++<span id="perSecond">0</span>/sec |
+x<span id="multiplier">1</span>
+</div>
+
+<button onclick="clickThanks()">Say Thank You</button>
+
+<div class="section">
+<h3>Upgrades</h3>
+<button onclick="buyClick()">Better Manners (+1/click)<br>Cost: <span id="clickCost">10</span></button>
+<button onclick="buyAuto()">Auto Thanker (+1/sec)<br>Cost: <span id="autoCost">50</span></button>
+<button onclick="buyMultiplier()">Gratitude Multiplier (x2)<br>Cost: <span id="multiCost">250</span></button>
+<button onclick="buyFactory()">Thank Factory (+10/sec)<br>Cost: <span id="factoryCost">1000</span></button>
+<button onclick="buyAllen()">Allen (Ultimate Producer +100/sec)<br>Cost: <span id="allenCost">50000</span></button>
+</div>
+
+<div class="section">
+<h3>Prestige</h3>
+<button onclick="prestige()">Gratitude Reset (1000)</button>
+Prestige Level: <span id="prestige">0</span>
+</div>
+
+<div class="section">
+<h3>Achievements</h3>
+<div id="achievements" class="small"></div>
+</div>
+
+<div class="section">
+<h3>Stats</h3>
+<div class="small">
+Play Time: <span id="playTime">0</span> minutes
+</div>
+</div>
+
+</div>
+
+<script>
+let data = {
+    thankYous: 0,
+    perClick: 1,
+    perSecond: 0,
+    multiplier: 1,
+    prestige: 0,
+    clickCost: 10,
+    autoCost: 50,
+    multiCost: 250,
+    factoryCost: 1000,
+    allenCost: 50000,
+    achievements: [],
+    playTime: 0,
+    lastSave: Date.now()
+};
+
+const achievementList = [
+    { type: "thankYous", value: 100, name: "Polite Beginnings" },
+    { type: "thankYous", value: 1000, name: "Thank You Overlord" },
+    { type: "time", value: 60, name: "Chris" }
+];
+
+function update() {
+    count.textContent = Math.floor(data.thankYous);
+    perClick.textContent = data.perClick;
+    perSecond.textContent = data.perSecond;
+    multiplier.textContent = data.multiplier;
+    clickCost.textContent = data.clickCost;
+    autoCost.textContent = data.autoCost;
+    multiCost.textContent = data.multiCost;
+    factoryCost.textContent = data.factoryCost;
+    allenCost.textContent = data.allenCost;
+    prestige.textContent = data.prestige;
+    playTime.textContent = Math.floor(data.playTime);
+
+    checkAchievements();
+    save();
+}
+
+function clickThanks() {
+    data.thankYous += data.perClick * data.multiplier * (1 + data.prestige);
+    update();
+}
+
+function buyClick() {
+    if (data.thankYous >= data.clickCost) {
+        data.thankYous -= data.clickCost;
+        data.perClick++;
+        data.clickCost = Math.floor(data.clickCost * 1.5);
+        update();
+    }
+}
+
+function buyAuto() {
+    if (data.thankYous >= data.autoCost) {
+        data.thankYous -= data.autoCost;
+        data.perSecond++;
+        data.autoCost = Math.floor(data.autoCost * 1.7);
+        update();
+    }
+}
+
+function buyMultiplier() {
+    if (data.thankYous >= data.multiCost) {
+        data.thankYous -= data.multiCost;
+        data.multiplier *= 2;
+        data.multiCost *= 3;
+        update();
+    }
+}
+
+function buyFactory() {
+    if (data.thankYous >= data.factoryCost) {
+        data.thankYous -= data.factoryCost;
+        data.perSecond += 10;
+        data.factoryCost *= 2;
+        update();
+    }
+}
+
+function buyAllen() {
+    if (data.thankYous >= data.allenCost) {
+        data.thankYous -= data.allenCost;
+        data.perSecond += 100;
+        data.allenCost *= 3;
+        update();
+    }
+}
+
+function prestige() {
+    if (data.thankYous >= 1000) {
+        data.prestige++;
+        data.thankYous = 0;
+        data.perClick = 1;
+        data.perSecond = 0;
+        data.multiplier = 1;
+        update();
+    }
+}
+
+function checkAchievements() {
+    achievementList.forEach(a => {
+        if (a.type === "thankYous" && data.thankYous >= a.value && !data.achievements.includes(a.name)) {
+            unlock(a.name);
+        }
+        if (a.type === "time" && data.playTime >= a.value && !data.achievements.includes(a.name)) {
+            unlock(a.name);
+        }
+    });
+}
+
+function unlock(name) {
+    data.achievements.push(name);
+    achievements.innerHTML += "🏆 " + name + "<br>";
+}
+
+function save() {
+    data.lastSave = Date.now();
+    localStorage.setItem("thankYouSave", JSON.stringify(data));
+}
+
+function load() {
+    const save = JSON.parse(localStorage.getItem("thankYouSave"));
+    if (save) {
+        let now = Date.now();
+        let secondsAway = Math.floor((now - save.lastSave) / 1000);
+        let earned = secondsAway * save.perSecond * save.multiplier * (1 + save.prestige);
+        data = save;
+        data.thankYous += earned;
+        alert("While you were away, you earned " + earned + " Thank Yous!");
+    }
+    update();
+}
+
+setInterval(() => {
+    data.thankYous += data.perSecond * data.multiplier * (1 + data.prestige);
+    data.playTime += 1 / 60;
+    update();
+}, 1000);
+
+load();
+</script>
+
+</body>
+</html>
