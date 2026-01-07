@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>THANK YOU CLICKER</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+:root{
+  --red:#ff2b2b;
+  --red-dark:#900;
+  --bg:#030303;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  background:black;
+  color:var(--red);
+  font-family:Consolas, monospace;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:100vh;
+  overflow:hidden;
+}
+
+/* THANK YOU SCROLL */
+canvas{
+  position:fixed;
+  inset:0;
+  z-index:-2;
+}
+
+/* scanlines */
+body::after{
+  content:"";
+  position:fixed;
+  inset:0;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.03) 0px,
+    rgba(255,255,255,0.03) 1px,
+    transparent 2px,
+    transparent 4px
+  );
+  pointer-events:none;
+}
+
+.game{
+  width:min(95vw,420px);
+  background:linear-gradient(180deg,#080000,#020202);
+  border:2px solid var(--red);
+  border-radius:18px;
+  padding:15px;
+  box-shadow:
+    0 0 40px rgba(255,0,0,.6),
+    inset 0 0 25px rgba(255,0,0,.2);
+  text-align:center;
+  position:relative;
+  animation:flicker 7s infinite;
+}
+
+@keyframes flicker{
+  0%,96%,100%{opacity:1}
+  97%{opacity:.9}
+  98%{opacity:.7}
+}
+
+.big{
+  font-size:34px;
+  font-weight:bold;
+  text-shadow:0 0 12px red;
+}
+
+.small{
+  font-size:13px;
+  color:#ffaaaa;
+}
+
+.cookie{
+  width:200px;
+  aspect-ratio:1;
+  border-radius:50%;
+  background:radial-gradient(circle,#ff6666,#900 70%);
+  border:4px solid black;
+  margin:15px auto;
+  cursor:pointer;
+  box-shadow:0 0 40px red;
+  animation:pulse 1.8s infinite alternate;
+}
+@keyframes pulse{
+  from{box-shadow:0 0 25px red}
+  to{box-shadow:0 0 55px crimson}
+}
+.cookie:active{transform:scale(.93)}
+
+button{
+  width:100%;
+  padding:10px;
+  margin:4px 0;
+  background:linear-gradient(180deg,#ff3333,#880000);
+  color:black;
+  border:none;
+  border-radius:8px;
+  font-weight:bold;
+  cursor:pointer;
+  text-transform:uppercase;
+}
+button:disabled{opacity:.4}
+
+.section{
+  border-top:1px solid red;
+  margin-top:10px;
+  padding-top:10px;
+}
+
+.float{
+  position:absolute;
+  pointer-events:none;
+  font-size:18px;
+  text-shadow:0 0 10px red;
+  animation:float 1s forwards;
+}
+@keyframes float{
+  from{opacity:1;transform:translate(-50%,0)}
+  to{opacity:0;transform:translate(-50%,-60px)}
+}
+
+.golden{
+  position:absolute;
+  width:80px;
+  aspect-ratio:1;
+  border-radius:50%;
+  background:radial-gradient(circle,#fff6a0,#ffcc00);
+  box-shadow:0 0 60px gold,0 0 90px red;
+  cursor:pointer;
+  animation:corrupt .6s infinite alternate;
+}
+@keyframes corrupt{
+  from{transform:scale(1)}
+  to{transform:scale(1.3) rotate(2deg)}
+}
+</style>
+</head>
+
+<body>
+<canvas id="matrix"></canvas>
+
+<div class="game" id="game">
+<h1>THANK YOU CLICKER</h1>
+
+<div id="count" class="big">0</div>
+<div class="small">
+<span id="perClick">1</span>/click |
+<span id="perSecond">0</span>/sec |
+x<span id="multi">1</span>
+</div>
+
+<div class="cookie" id="cookie">THANKS</div>
+
+<div class="section">
+  <button id="upClick"></button>
+  <button id="upAuto"></button>
+  <button id="upFactory"></button>
+</div>
+
+<div class="section">
+  <button id="prestigeBtn"></button>
+  Prestige: <span id="prestige">0</span>
+</div>
+
+<div class="section">
+  <button id="ascendBtn" style="display:none"></button>
+  Ascension: <span id="ascension">0</span> (+100%)
+</div>
+
+<div class="section small">
+  Uptime: <span id="time">0</span> min
+</div>
+</div>
+
+<script>
+/* ================= THANK YOU SCROLL (Colored) ================= */
+const c = document.getElementById("matrix"), ctx = c.getContext("2d");
+let drops = [], colCount = 0;
+
+function resize(){
+  c.width = innerWidth;
+  c.height = innerHeight;
+  colCount = Math.floor(innerWidth / 14);
+  drops = Array(colCount).fill(1);
+}
+resize();
+addEventListener("resize", resize);
+
+function getRandomGreen() {
+  // random green shades from bright lime to dark green
+  const r = Math.floor(Math.random() * 50);      // small red
+  const g = 150 + Math.floor(Math.random() * 105); // green 150-255
+  const b = Math.floor(Math.random() * 50);      // small blue
+  return `rgb(${r},${g},${b})`;
+}
+
+function matrix(){
+  ctx.fillStyle = "rgba(0,0,0,.08)";
+  ctx.fillRect(0,0,c.width,c.height);
+  ctx.font = "14px monospace";
+
+  for(let i=0; i<colCount; i++){
+    ctx.fillStyle = getRandomGreen();
+    const t = "THANK YOU"[Math.floor(Math.random() * 9)];
+    ctx.fillText(t, i*14, drops[i]*14);
+
+    if(drops[i]*14 > c.height || Math.random() > 0.95) drops[i] = 0;
+    drops[i]++;
+  }
+}
+setInterval(matrix
